@@ -25,11 +25,16 @@ func VerifyToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token claims"})
 	}
 
-	username, ok := claims["username"].(string)
+	userId, ok := claims["user_id"] 
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token data"})
 	}
 
-	c.Locals("username", username)
+	role, ok:= claims["role"]
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token data"})
+	}
+	c.Locals("user_id", userId)
+	c.Locals("role", role)
 	return c.Next()
 }
