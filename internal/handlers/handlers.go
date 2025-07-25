@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"authapi/internal/db"
 	"authapi/internal/models"
 	"authapi/internal/utils"
-	"authapi/internal/db"
-	"time"
-	"sync"
 	"strconv"
+	"sync"
+	"time"
+	"github.com/gofiber/fiber/v2"
 )
 
 func RegisterUser(c *fiber.Ctx) error {
@@ -26,8 +26,13 @@ func RegisterUser(c *fiber.Ctx) error {
 			"error": "Email already Registered",
 		})
 	}
-	u.Points = 200
-
+	u.Points = 400
+	// password hasshing
+	hashedPassword, err := utils.HashingPassword(u.Password)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+	u.Password = hashedPassword
     // generating the otp
 	u.OTP = utils.GenerateOTP()
 	u.OTPExpiresAt = time.Now().Add(5 * time.Minute)
@@ -47,52 +52,61 @@ func RegisterUser(c *fiber.Ctx) error {
 }
 
 func VerifyOTP(c *fiber.Ctx) error {
-	var input struct {
-		Username string `json:"username"`
-		OTP      string `json:"otp"`
-	}
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
-	}
-	var user models.User
-	result := db.DB.Where("username = ?", input.Username).First(&user)
-	if result.Error != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
-	}
-	if time.Now().After(user.OTPExpiresAt) {
-		return c.Status(400).JSON(fiber.Map{"error": "OTP expired"})
-	}
-	if user.OTP != input.OTP {
-		return c.Status(400).JSON(fiber.Map{"error": "Incorrect OTP"})
-	}
-	user.IsVerified = true
-	db.DB.Save(&user)
-	return c.JSON(fiber.Map{"message": "Verification successful"})
+    var input struct {
+        Email    string `json:"email"`
+        OTP      string `json:"otp"`
+    }
+    if err := c.BodyParser(&input); err != nil {
+        return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
+    }
+    if input.Email == "" {
+        return c.Status(400).JSON(fiber.Map{"error": "Email required"})
+    }
+    var user models.User
+    result := db.DB.Where("email = ?",  input.Email).First(&user)
+    if result.Error != nil {
+        return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+    }
+    if !user.IsVerified && time.Now().After(user.OTPExpiresAt) {
+        return c.Status(400).JSON(fiber.Map{"error": "OTP expired"})
+    }
+    if user.OTP != input.OTP {
+        return c.Status(400).JSON(fiber.Map{"error": "Incorrect OTP"})
+    }
+    user.IsVerified = true
+    db.DB.Save(&user)
+    return c.JSON(fiber.Map{"message": "Verification successful"})
 }
 
 func LoginHandler(c *fiber.Ctx) error {
-	var credentials models.User
-	if err := c.BodyParser(&credentials); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	var user models.User
-	if result := db.DB.Where("email = ?", credentials.Email).Or("username = ?", credentials.Username).First(&user); result.Error!=nil {
-		return  c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Account Not found"})
-	}
-	if user.Password != credentials.Password {
-		return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
-	}
-	if !user.IsVerified {
-		return c.Status(403).JSON(fiber.Map{"error": "Account not verified"})
-	}
-	user.Points = 500
-
-	token, err := utils.GenerateToken(user.ID, user.Role)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Could not generate token"})
-	}
-	return c.JSON(fiber.Map{"token": token, "role":user.Role})
+    var credentials struct {
+        Username string `json:"username"`
+        Email    string `json:"email"`
+        Password string `json:"password"`
+    }
+    if err := c.BodyParser(&credentials); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+    }
+    if credentials.Username == "" && credentials.Email == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Username or Email required"})
+    }
+    var user models.User
+    result := db.DB.Where("username = ? OR email = ?", credentials.Username, credentials.Email).First(&user)
+    if result.Error != nil {
+        return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Account Not found"})
+    }
+    if  !utils.CheckPasswordHashing(credentials.Password, user.Password) { 
+        return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
+    }
+    if !user.IsVerified {
+        return c.Status(403).JSON(fiber.Map{"error": "Account not verified"})
+    }
+	
+    token, err := utils.GenerateToken(user.ID, user.Role)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Could not generate token"})
+    }
+    return c.JSON(fiber.Map{"token": token, "role": user.Role})
 }
 
 func ListRewards(c *fiber.Ctx) error {
@@ -232,7 +246,6 @@ func DeleteReward(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Reward deleted successfully"})
 }
 
-
 func PartnerAddReward(c *fiber.Ctx) error {
 	role:=c.Locals("role").(string)
 	if role!="partner"{
@@ -244,7 +257,8 @@ func PartnerAddReward(c *fiber.Ctx) error {
 	}
 	db.DB.Create(r)
 	return c.JSON(fiber.Map{"message": "Partner reward added"})
-}
+} 
+
 
 func ViewProfile(c *fiber.Ctx) error {
 	userID:= uint(c.Locals("user_id").(float64))
@@ -252,3 +266,4 @@ func ViewProfile(c *fiber.Ctx) error {
 	db.DB.First(&u, userID)
 	return c.JSON(fiber.Map{"username" : u.Username, "points": u.Points})
 }
+
