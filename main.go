@@ -43,12 +43,16 @@ func main() {
 	admin.Post("/addreward", handlers.AdminAddReward)
 	admin.Post("/addpartner", handlers.AdminAddPartner)
 	admin.Get("/getpartners", handlers.GetAllPartners)
-	admin.Put("/rewards/:id", handlers.UpdateReward)
-	admin.Delete("/rewards/:id", handlers.DeleteReward)
+	admin.Put("/rewards/:id", handlers.AdminUpdateReward)
+	admin.Delete("/rewards/:id", handlers.AdminDeleteReward)
 
 	// partner apis 
 	partner := app.Group("/partner", middleware.VerifyToken)
 	partner.Post("/addreward", handlers.PartnerAddReward)
+	partner.Get("/rewards", handlers.GetPartnerRewards)
+	partner.Put("/rewards/:id", handlers.PartnerUpdateReward)
+	partner.Delete("/rewards/:id", handlers.PartnerDeleteReward)
+	partner.Get("/analytics", handlers.GetPartnerAnalytics)
 
 	port := os.Getenv("PORT")
 	log.Fatal(app.Listen(":" + port))

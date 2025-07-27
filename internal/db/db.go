@@ -4,7 +4,7 @@ import (
 	"authapi/internal/models"
 	"log"
 	"os"
-
+    "authapi/internal/utils"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -22,19 +22,27 @@ func Connect() {
 	SeedData()
 }
 func SeedData() {
+	adminpassword, err := utils.HashingPassword("admin123")
+	if err != nil {
+		log.Fatal("Failed to hash admin password:", err)
+	}
 	DB.Save(&models.User{
 		Email:      "admin@rewardx.com",
 		Username:   "Admin",
-		Password:   "admin123",
+		Password:   adminpassword,
 		Role:       "admin",
 		Points:      1000,
 	    IsVerified:  true,
 	})
-
+	partnerpassword, err := utils.HashingPassword("partner123")
+	if err != nil {
+		log.Fatal("Failed to hash partner password:", err)
+	}
 	DB.Save(&models.User{
+		
 		Email:    "partner@brand.com",
 		Username: "Partner",
-		Password: "partner123",
+		Password: partnerpassword,
 		Role:     "partner",
 		Points:   500,
 		IsVerified:  true,
