@@ -261,6 +261,47 @@ func AdminDeleteReward(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Reward deleted successfully"})
 }
 
+// GetAdminAnalytics provides a platform-wide overview for administrators.
+func GetAdminAnalytics(c *fiber.Ctx) error {
+	type ActiveMerchant struct {
+	Username        string `json:"username"`
+	RedemptionCount int    `json:"redemption_count"`
+    }
+	// Get total user and merchant counts
+	var totalUsers int64
+	db.DB.Model(&models.User{}).Where("role = ?", "user").Count(&totalUsers)
+
+	var totalMerchants int64
+	db.DB.Model(&models.User{}).Where("role = ?", "partner").Count(&totalMerchants)
+
+	// Get total counts for rewards and redemptions
+	var totalRewards int64
+	db.DB.Model(&models.Reward{}).Count(&totalRewards)
+
+	var totalRedemptions int64
+	db.DB.Model(&models.Transaction{}).Count(&totalRedemptions)
+
+	// Find the most active partners
+	var mostActivePartners []ActiveMerchant
+	db.DB.Model(&models.User{}).
+		Select("users.username, COUNT(transactions.id) as redemption_count").
+		Joins("JOIN rewards ON rewards.created_by_id = users.id").
+		Joins("JOIN transactions ON transactions.reward_id = rewards.id").
+		Where("users.role = ?", "partner").
+		Group("users.username").
+		Order("redemption_count DESC").
+		Limit(5).
+		Scan(&mostActivePartners)
+
+	return c.JSON(fiber.Map{
+		"total_users":           totalUsers,
+		"total_merchants":       totalMerchants,
+		"total_rewards":         totalRewards,
+		"total_redemptions":     totalRedemptions,
+		"most_active_partners": mostActivePartners,
+	})
+}
+
 // PartnerAddReward adds a new reward created by the logged-in partner
 func PartnerAddReward(c *fiber.Ctx) error {
 	//Get Logged-in Partner
@@ -297,16 +338,13 @@ func PartnerUpdateReward(c *fiber.Ctx) error {
 	if err := db.DB.First(&reward, rewardID).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Reward not found"})
 	}
-
 	if reward.CreatedByID != userID {
 		return c.Status(403).JSON(fiber.Map{"error": "Forbidden: You do not own this reward"})
 	}
-
 	var updatedData models.Reward
 	if err := c.BodyParser(&updatedData); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-
 	// Update the fields
 	if updatedData.Name != "" {
 		reward.Name = updatedData.Name

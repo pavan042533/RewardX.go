@@ -45,6 +45,7 @@ func main() {
 	admin.Get("/getpartners", handlers.GetAllPartners)
 	admin.Put("/rewards/:id", handlers.AdminUpdateReward)
 	admin.Delete("/rewards/:id", handlers.AdminDeleteReward)
+	admin.Get("/analytics", handlers.GetAdminAnalytics)
 
 	// partner apis 
 	partner := app.Group("/partner", middleware.VerifyToken)
